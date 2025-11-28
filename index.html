@@ -3,35 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Three.js Brick Breaker (Mobile Ready)</title>
+    <title>Three.js Brick Breaker (Controls Below)</title>
     <style>
         body { 
             margin: 0; 
-            overflow: hidden; /* Prevent scrolling */
+            overflow: hidden; 
             background-color: #000;
-            user-select: none; /* Disable text selection on touch devices */
-            touch-action: manipulation; /* Improve button responsiveness */
+            user-select: none; 
+            touch-action: manipulation; 
+            display: flex; /* Use flexbox to easily stack canvas and controls */
+            flex-direction: column; /* Stack vertically */
+            height: 100vh; /* Ensure body takes full viewport height */
         } 
         canvas { 
             display: block; 
+            flex-grow: 1; /* Allow canvas to take available space */
         }
         #scoreboard {
             position: absolute;
-            top: 10px;
+            top: 30px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            z-index: 10;
+            
+        }
+
+
+            #label {
+            position: absolute;
+            top: 5px;
             left: 10px;
             color: white;
             font-family: Arial, sans-serif;
             font-size: 24px;
             z-index: 10;
         }
+
+
         #controls {
-            position: absolute; 
-            bottom: 20px; 
-            width: 100%; 
+            /* Now absolute position is relative to the #controls container,
+               or simply let it flow naturally below the canvas */
+            width: 100%;
             display: flex; 
             justify-content: space-between; 
-            padding: 0 10px; 
-            z-index: 100;
+            padding: 10px; /* Padding for the buttons within their row */
+            background-color: #222; /* Dark background for the control area */
+            box-sizing: border-box; /* Include padding in width */
+            flex-shrink: 0; /* Prevent controls from shrinking */
         }
         #controls button {
             background-color: #4CAF50;
@@ -43,15 +63,20 @@
             cursor: pointer;
             user-select: none;
             opacity: 0.8;
-            min-width: 150px;
+            flex-grow: 1; /* Allow buttons to expand */
+            margin: 0 5px; /* Space between buttons */
         }
+        #controls button:first-child { margin-left: 0; }
+        #controls button:last-child { margin-right: 0; }
         #controls button:active {
             opacity: 1.0;
         }
     </style>
 </head>
 <body>
+    <div id="label">A.I.C teens Digital</div>
     <div id="scoreboard">Score: 0</div>
+
 
     <div id="controls">
         <button id="left-button">&#9664; Left</button>
@@ -59,6 +84,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
     <script>
         // --- 0. GAME CONSTANTS & INITIALIZATION ---
@@ -66,9 +92,10 @@
         const scene = new THREE.Scene();
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         
-        // Orthographic Camera Setup
         const FRUSTUM_SIZE = 15; 
-        const ASPECT = window.innerWidth / window.innerHeight; 
+        
+        // Initial ASPECT calculation is temporary, it will be corrected in updateRendererSize()
+        let ASPECT = window.innerWidth / window.innerHeight; 
         
         const camera = new THREE.OrthographicCamera(
             -FRUSTUM_SIZE * ASPECT / 2,  
@@ -79,14 +106,19 @@
             1000                         
         );
         camera.position.z = 10;
-
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+        
+        // --- CORRECTED CANVAS PLACEMENT ---
+        // 1. Create a container for the canvas
+        const gameViewDomElement = document.createElement('div');
+        gameViewDomElement.style.flexGrow = '1';
+        // 2. Insert it before the controls
+        document.body.insertBefore(gameViewDomElement, document.getElementById('controls'));
+        // 3. Append the canvas (renderer.domElement) to this container
+        gameViewDomElement.appendChild(renderer.domElement);
 
         // Game Metrics & Constants
-        const GAME_AREA_HEIGHT = FRUSTUM_SIZE;
+        const GAME_AREA_HEIGHT = FRUSTUM_SIZE; 
         
-        // PADDLE ADJUSTMENTS 
         let PADDLE_WIDTH_DEFAULT = 3; 
         let PADDLE_WIDTH_MOBILE = 1.5; 
         let PADDLE_WIDTH = PADDLE_WIDTH_DEFAULT;
@@ -96,14 +128,12 @@
         const BALL_RADIUS = 0.15;
         const BASE_BALL_SPEED = 0.08;
         
-        // BRICK CONSTANTS
         const BRICK_WIDTH = 1.0; 
         const BRICK_HEIGHT = 0.4;
         const BRICK_ROWS = 7;    
         const BRICK_COLUMNS = 9; 
         const BRICK_PADDING = 0.1;
         
-        // Game State Variables
         let speedMultiplier = 1.0;
         let ballDirectionX = 1; 
         let ballDirectionY = 1; 
@@ -113,7 +143,6 @@
 
         const scoreElement = document.getElementById('scoreboard');
         
-        // CONTROL VARIABLES
         const leftButton = document.getElementById('left-button');
         const rightButton = document.getElementById('right-button');
         const controlButtons = document.getElementById('controls');
@@ -125,7 +154,7 @@
 
 
         // --- 1. GAME OBJECT CREATION ---
-
+        
         // 1.1 Background
         scene.background = new THREE.Color(0x330055);
         const backgroundGeometry = new THREE.PlaneGeometry(FRUSTUM_SIZE * 5, FRUSTUM_SIZE * 5); 
@@ -139,9 +168,11 @@
         const paddleMaterial = new THREE.MeshBasicMaterial({ color: 0x9999ff }); 
 
         function createOrUpdatePaddle() {
-            const currentAspect = window.innerWidth / window.innerHeight;
+            // Use clientWidth/clientHeight of the *canvas container* for accurate aspect calculation
+            const containerWidth = gameViewDomElement.clientWidth;
+            const containerHeight = gameViewDomElement.clientHeight;
+            const currentAspect = containerWidth / containerHeight;
             
-            // Determine paddle width based on aspect ratio
             if (currentAspect < 1.0) { 
                 PADDLE_WIDTH = PADDLE_WIDTH_MOBILE; 
             } else {
@@ -157,12 +188,12 @@
                     const halfWidthLimit = currentAreaWidth / 2 - PADDLE_WIDTH / 2;
                     paddle.position.x = Math.min(Math.max(paddle.position.x, -halfWidthLimit), halfWidthLimit);
                 }
-            } else { // First time creation
+            } else { 
                 const paddleGeometry = new THREE.PlaneGeometry(PADDLE_WIDTH, PADDLE_HEIGHT);
                 paddle = new THREE.Mesh(paddleGeometry, paddleMaterial);
-                paddle.position.set(0, -GAME_AREA_HEIGHT / 2 + PADDLE_HEIGHT, 0);
                 scene.add(paddle);
             }
+            paddle.position.set(0, -GAME_AREA_HEIGHT / 2 + PADDLE_HEIGHT, 0);
         }
         createOrUpdatePaddle(); 
 
@@ -170,17 +201,17 @@
         const ballGeometry = new THREE.CircleGeometry(BALL_RADIUS, 32);
         const ballMaterial = new THREE.MeshBasicMaterial({ color: 0xff4444 }); 
         const ball = new THREE.Mesh(ballGeometry, ballMaterial);
-        ball.position.set(0, -2, 0);
+        ball.position.set(0, -GAME_AREA_HEIGHT / 2 + PADDLE_HEIGHT + BALL_RADIUS * 2, 0); 
         scene.add(ball);
 
-        // 1.4 The Bricks (Closest row is hard)
+        // 1.4 The Bricks
         function createBricks() {
             bricks.forEach(brick => scene.remove(brick));
             bricks.length = 0;
 
             const totalBrickWidth = BRICK_COLUMNS * BRICK_WIDTH + (BRICK_COLUMNS - 1) * BRICK_PADDING;
             const startX = -totalBrickWidth / 2 + BRICK_WIDTH / 2;
-            const startY = GAME_AREA_HEIGHT / 2 - BRICK_PADDING - BRICK_HEIGHT * 2;
+            const startY = GAME_AREA_HEIGHT / 2 - BRICK_PADDING - BRICK_HEIGHT / 2;
 
             for (let r = 0; r < BRICK_ROWS; r++) {
                 for (let c = 0; c < BRICK_COLUMNS; c++) {
@@ -212,9 +243,8 @@
         createBricks();
 
 
-        // --- 2. INPUT HANDLERS (Keyboard and On-Screen Buttons) ---
+        // --- 2. INPUT HANDLERS (Same as before) ---
 
-        // Keyboard Input
         window.addEventListener('keydown', (e) => {
             const key = e.key.toUpperCase();
             if (keys.hasOwnProperty(key)) {
@@ -229,7 +259,6 @@
             }
         });
 
-        // On-Screen Button Input (Touch/Click)
         function setButtonState(buttonKey, state) {
             if (keys.hasOwnProperty(buttonKey)) {
                 keys[buttonKey] = state;
@@ -255,7 +284,7 @@
         }
 
 
-        // --- 3. MOVEMENT & GAME LOGIC FUNCTIONS ---
+        // --- 3. MOVEMENT & GAME LOGIC FUNCTIONS (Paddle logic updated for responsiveness) ---
 
         function updateScoreDisplay() {
             scoreElement.innerText = `Score: ${score}`;
@@ -267,14 +296,16 @@
         }
 
         function updatePaddle() {
-            const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight); 
+            // Calculate current game area width dynamically
+            const containerWidth = gameViewDomElement.clientWidth;
+            const containerHeight = gameViewDomElement.clientHeight;
+            const currentAspect = containerWidth / containerHeight;
+            const currentAreaWidth = FRUSTUM_SIZE * currentAspect;
+
             let move = 0;
 
-            // Check Keyboard Input
             if (keys.A) move -= PADDLE_SPEED;
             if (keys.D) move += PADDLE_SPEED;
-            
-            // Check On-Screen Button Input
             if (keys.LEFT_BTN) move -= PADDLE_SPEED;
             if (keys.RIGHT_BTN) move += PADDLE_SPEED;
             
@@ -286,7 +317,10 @@
         }
 
         function updateBall() {
-            const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight);
+            const containerWidth = gameViewDomElement.clientWidth;
+            const containerHeight = gameViewDomElement.clientHeight;
+            const currentAspect = containerWidth / containerHeight;
+            const currentAreaWidth = FRUSTUM_SIZE * currentAspect;
 
             ball.position.x += ballVelocity.x;
             ball.position.y += ballVelocity.y;
@@ -303,10 +337,9 @@
                 recalculateVelocity();
             }
 
-            if (ball.position.y < -GAME_AREA_HEIGHT / 2) {
+            if (ball.position.y < -GAME_AREA_HEIGHT / 2) { 
                 console.log("Game Over! Score:", score);
-                // Reset state
-                ball.position.set(0, 0, 0);
+                ball.position.set(0, -GAME_AREA_HEIGHT / 2 + PADDLE_HEIGHT + BALL_RADIUS * 2, 0); 
                 ballDirectionY = -1;
                 speedMultiplier = 1.0;
                 score = 0;
@@ -317,7 +350,7 @@
         }
 
         function checkCollisions() {
-            // --- PADDLE COLLISION ---
+            // ... (Collision logic remains the same)
             if (ball.position.y - BALL_RADIUS < paddle.position.y + PADDLE_HEIGHT / 2 &&
                 ball.position.y - BALL_RADIUS > paddle.position.y - PADDLE_HEIGHT / 2 &&
                 ball.position.x + BALL_RADIUS > paddle.position.x - PADDLE_WIDTH / 2 &&
@@ -330,7 +363,6 @@
                 recalculateVelocity();
             }
 
-            // --- BRICK COLLISION (Handles Multi-Hit Bricks) ---
             for (let i = bricks.length - 1; i >= 0; i--) {
                 const brick = bricks[i];
 
@@ -339,7 +371,6 @@
                     ball.position.y + BALL_RADIUS > brick.position.y - BRICK_HEIGHT / 2 &&
                     ball.position.y - BALL_RADIUS < brick.position.y + BRICK_HEIGHT / 2) {
 
-                    // Reverse Axis
                     const xDiff = Math.abs(ball.position.x - brick.position.x);
                     const yDiff = Math.abs(ball.position.y - brick.position.y);
                     
@@ -349,18 +380,15 @@
                         ballDirectionY *= -1; 
                     }
                     
-                    // Process Hit
                     brick.userData.hitsRequired -= 1;
                     
                     if (brick.userData.hitsRequired <= 0) {
-                        // BRICK IS DESTROYED
                         scene.remove(brick);
                         bricks.splice(i, 1);
                         
                         const points = brick.userData.originalColor.getHex() === 0xAAAAAA ? POINTS_PER_HARD_BRICK : POINTS_PER_BRICK;
                         score += points;
                     } else {
-                        // BRICK IS DAMAGED BUT STILL ALIVE
                         const currentColor = brick.material.color.getHex();
                         brick.material.color.setHex(currentColor * 0.7); 
                         score += POINTS_PER_BRICK / 2;
@@ -368,15 +396,13 @@
 
                     updateScoreDisplay();
 
-                    // Speed up
                     speedMultiplier += 0.015; 
                     recalculateVelocity();
                     
-                    // Win Condition
                     if (bricks.length === 0) {
                         console.log("YOU WIN! Reloading level...");
                         createBricks(); 
-                        ball.position.set(0, -2, 0); 
+                        ball.position.set(0, -GAME_AREA_HEIGHT / 2 + PADDLE_HEIGHT + BALL_RADIUS * 2, 0); 
                         speedMultiplier = 1.0; 
                         recalculateVelocity();
                     }
@@ -388,6 +414,29 @@
 
         // --- 4. ANIMATION / GAME LOOP & RESPONSIVENESS ---
 
+        // --- CORRECTED updateRendererSize function ---
+        function updateRendererSize() {
+            const newWidth = gameViewDomElement.clientWidth;
+            const newHeight = gameViewDomElement.clientHeight;
+
+            // 1. Update Renderer's internal size and the canvas element's attributes
+            renderer.setSize(newWidth, newHeight);
+
+            // 2. Adjust camera boundaries using the new size
+            const newAspect = newWidth / newHeight;
+            camera.left = -FRUSTUM_SIZE * newAspect / 2;
+            camera.right = FRUSTUM_SIZE * newAspect / 2;
+            camera.top = FRUSTUM_SIZE / 2;
+            camera.bottom = -FRUSTUM_SIZE / 2;
+            camera.updateProjectionMatrix();
+
+            // 3. Update the paddle and game elements based on the new boundaries
+            createOrUpdatePaddle(); 
+        }
+
+        // --- Initial size call must be AFTER the canvas is attached to the DOM ---
+        updateRendererSize(); 
+
         function animate() {
             requestAnimationFrame(animate);
 
@@ -398,21 +447,7 @@
             renderer.render(scene, camera);
         }
 
-        // Responsive Resize Handler 
-        window.addEventListener('resize', () => {
-            const newAspect = window.innerWidth / window.innerHeight;
-            
-            // 1. Update Camera Boundaries
-            camera.left = -FRUSTUM_SIZE * newAspect / 2;
-            camera.right = FRUSTUM_SIZE * newAspect / 2;
-            camera.updateProjectionMatrix();
-            
-            // 2. Update Renderer Size
-            renderer.setSize(window.innerWidth, window.innerHeight);
-
-            // 3. Update Paddle Size
-            createOrUpdatePaddle(); 
-        });
+        window.addEventListener('resize', updateRendererSize);
 
         animate(); // Start the game loop
 
