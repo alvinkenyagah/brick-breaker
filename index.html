@@ -3,7 +3,12 @@
 <head>
     </head>
 <body>
-    <div id="scoreboard" style="position: absolute; top: 10px; left: 10px; color: white; font-family: sans-serif; font-size: 24px;">
+
+        <div style="position: absolute; top: 5px; left: 10px; color: white; font-family: sans-serif; font-size: 20px;">
+        AIC Teens Digital class
+    </div>
+
+    <div id="scoreboard" style="position: absolute; top: 20px; left: 10px; color: white; font-family: sans-serif; font-size: 24px;">
         Score: 0
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -117,32 +122,49 @@
     scene.add(ball);
 
     // 1.4 The Bricks
-    function createBricks() {
-        // Clear existing bricks if any (for level reset)
-        bricks.forEach(brick => scene.remove(brick));
-        bricks.length = 0; // Clear the array
+// 1.4 The Bricks
+function createBricks() {
+    bricks.forEach(brick => scene.remove(brick));
+    bricks.length = 0;
 
-        const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight); 
+    const totalBrickWidth = BRICK_COLUMNS * BRICK_WIDTH + (BRICK_COLUMNS - 1) * BRICK_PADDING;
+    const startX = -totalBrickWidth / 2 + BRICK_WIDTH / 2;
+    const startY = GAME_AREA_HEIGHT / 2 - BRICK_PADDING - BRICK_HEIGHT * 2;
 
-        const totalBrickWidth = BRICK_COLUMNS * BRICK_WIDTH + (BRICK_COLUMNS - 1) * BRICK_PADDING;
-        const startX = -totalBrickWidth / 2 + BRICK_WIDTH / 2;
-        const startY = GAME_AREA_HEIGHT / 2 - BRICK_PADDING - BRICK_HEIGHT * 2; // Start bricks a bit lower
-
-        for (let r = 0; r < BRICK_ROWS; r++) {
-            for (let c = 0; c < BRICK_COLUMNS; c++) {
-                const brickGeometry = new THREE.PlaneGeometry(BRICK_WIDTH, BRICK_HEIGHT);
-                const color = new THREE.Color(`hsl(${r * 40 + c * 5}, 80%, 60%)`); // More varied colors
-                const brickMaterial = new THREE.MeshBasicMaterial({ color: color });
-                const brick = new THREE.Mesh(brickGeometry, brickMaterial);
-
-                brick.position.x = startX + c * (BRICK_WIDTH + BRICK_PADDING);
-                brick.position.y = startY - r * (BRICK_HEIGHT + BRICK_PADDING);
-
-                scene.add(brick);
-                bricks.push(brick);
+    for (let r = 0; r < BRICK_ROWS; r++) {
+        for (let c = 0; c < BRICK_COLUMNS; c++) {
+            
+            // --- UPDATED LOGIC HERE ---
+            // Set health: The LAST row (r = BRICK_ROWS - 1) requires 2 hits.
+            const isClosestRow = (r === BRICK_ROWS - 1);
+            const hits = isClosestRow ? 2 : 1;
+            // --------------------------
+            
+            const brickGeometry = new THREE.PlaneGeometry(BRICK_WIDTH, BRICK_HEIGHT);
+            
+            // Define base color based on row
+            let baseColor = `hsl(${r * 40 + c * 5}, 80%, 60%)`;
+            
+            // If hard brick, use a distinctive color
+            if (hits === 2) {
+                baseColor = '#AAAAAA'; 
             }
+
+            const brickMaterial = new THREE.MeshBasicMaterial({ color: baseColor });
+            const brick = new THREE.Mesh(brickGeometry, brickMaterial);
+
+            brick.position.x = startX + c * (BRICK_WIDTH + BRICK_PADDING);
+            brick.position.y = startY - r * (BRICK_HEIGHT + BRICK_PADDING);
+
+            // Attach custom properties to the THREE.Mesh object
+            brick.userData.hitsRequired = hits;
+            brick.userData.originalColor = new THREE.Color(baseColor);
+            
+            scene.add(brick);
+            bricks.push(brick);
         }
     }
+}
     createBricks();
 
 
