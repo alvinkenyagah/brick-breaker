@@ -1,441 +1,421 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    </head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Three.js Brick Breaker (Mobile Ready)</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; /* Prevent scrolling */
+            background-color: #000;
+            user-select: none; /* Disable text selection on touch devices */
+            touch-action: manipulation; /* Improve button responsiveness */
+        } 
+        canvas { 
+            display: block; 
+        }
+        #scoreboard {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            z-index: 10;
+        }
+        #controls {
+            position: absolute; 
+            bottom: 20px; 
+            width: 100%; 
+            display: flex; 
+            justify-content: space-between; 
+            padding: 0 10px; 
+            z-index: 100;
+        }
+        #controls button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 15px 30px;
+            font-size: 24px;
+            cursor: pointer;
+            user-select: none;
+            opacity: 0.8;
+            min-width: 150px;
+        }
+        #controls button:active {
+            opacity: 1.0;
+        }
+    </style>
+</head>
 <body>
+    <div id="scoreboard">Score: 0</div>
 
-<button id="motion-permission-button" style="position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); z-index: 100; padding: 10px 20px;">
-    Start Game (Enable Tilt)
-</button>
-<button id="keyboard-dismiss-button" style="position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); z-index: 100; padding: 10px 20px;">
-    Use Keyboard/Touch
-</button>
-
-        <div style="position: absolute; top: 5px; left: 10px; color: white; font-family: sans-serif; font-size: 20px;">
-        AIC Teens Digital class
-        
+    <div id="controls">
+        <button id="left-button">&#9664; Left</button>
+        <button id="right-button">Right &#9654;</button>
     </div>
 
-
-    <div id="scoreboard" style="position: absolute; top: 20px; left: 10px; color: white; font-family: sans-serif; font-size: 24px;">
-        Score: 0
-    </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
+    <script>
+        // --- 0. GAME CONSTANTS & INITIALIZATION ---
 
-<script>
-    // --- 0. GAME CONSTANTS & INITIALIZATION ---
-
-    const scene = new THREE.Scene();
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    
-    // Orthographic Camera Setup
-    const FRUSTUM_SIZE = 15; 
-    const ASPECT = window.innerWidth / window.innerHeight; 
-    
-    const camera = new THREE.OrthographicCamera(
-        -FRUSTUM_SIZE * ASPECT / 2,  
-        FRUSTUM_SIZE * ASPECT / 2,   
-        FRUSTUM_SIZE / 2,            
-        -FRUSTUM_SIZE / 2,           
-        1,                           
-        1000                         
-    );
-    camera.position.z = 10;
-
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-
-    // Game Metrics & Constants
-    const GAME_AREA_HEIGHT = FRUSTUM_SIZE;
-    
-    // PADDLE ADJUSTMENTS 
-    let PADDLE_WIDTH_DEFAULT = 3; 
-    let PADDLE_WIDTH_MOBILE = 1.5; // Smallest size for mobile
-    let PADDLE_WIDTH = PADDLE_WIDTH_DEFAULT;
-    const PADDLE_HEIGHT = 0.5; 
-    const PADDLE_SPEED = 0.2;
-
-    const BALL_RADIUS = 0.15;
-    const BASE_BALL_SPEED = 0.08;
-    
-    // BRICK CONSTANTS (Smaller and more numerous)
-    const BRICK_WIDTH = 1.0; 
-    const BRICK_HEIGHT = 0.4;
-    const BRICK_ROWS = 7;    
-    const BRICK_COLUMNS = 9; 
-    const BRICK_PADDING = 0.1;
-    
-    // Game State Variables
-    let speedMultiplier = 1.0;
-    let ballDirectionX = 1; 
-    let ballDirectionY = 1; 
-    let score = 0;
-    const POINTS_PER_BRICK = 10;
-    const POINTS_PER_HARD_BRICK = 25;
-
-    const scoreElement = document.getElementById('scoreboard');
-    const permissionButton = document.getElementById('motion-permission-button');
-    const dismissButton = document.getElementById('keyboard-dismiss-button');
-
-    const bricks = []; 
-    const keys = { W: false, A: false, S: false, D: false };
-    
-    let ballVelocity = { x: BASE_BALL_SPEED, y: BASE_BALL_SPEED };
-    let isMotionControlEnabled = false;
-    const motionSensitivity = 0.5; 
-
-
-    // --- 1. GAME OBJECT CREATION ---
-
-    // 1.1 Background
-    const backgroundGeometry = new THREE.PlaneGeometry(FRUSTUM_SIZE * 5, FRUSTUM_SIZE * 5); 
-    const backgroundMaterial = new THREE.MeshBasicMaterial({ color: 0x330055, side: THREE.DoubleSide }); 
-    const backgroundMesh = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
-    backgroundMesh.position.set(0, 0, -1); 
-    scene.add(backgroundMesh);
-
-    // 1.2 The Paddle (Dynamic size)
-    let paddle; 
-    const paddleMaterial = new THREE.MeshBasicMaterial({ color: 0x9999ff }); 
-
-    function createOrUpdatePaddle() {
-        const currentAspect = window.innerWidth / window.innerHeight;
+        const scene = new THREE.Scene();
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         
-        if (currentAspect < 0.75) { 
-            PADDLE_WIDTH = PADDLE_WIDTH_MOBILE; 
-        } else {
-            PADDLE_WIDTH = PADDLE_WIDTH_DEFAULT; 
-        }
-
-        if (paddle) { 
-            if (paddle.geometry.parameters.width !== PADDLE_WIDTH) { 
-                paddle.geometry.dispose(); 
-                paddle.geometry = new THREE.PlaneGeometry(PADDLE_WIDTH, PADDLE_HEIGHT);
-                
-                const currentAreaWidth = FRUSTUM_SIZE * currentAspect;
-                const halfWidthLimit = currentAreaWidth / 2 - PADDLE_WIDTH / 2;
-                paddle.position.x = Math.min(Math.max(paddle.position.x, -halfWidthLimit), halfWidthLimit);
-            }
-        } else { // First time creation
-            const paddleGeometry = new THREE.PlaneGeometry(PADDLE_WIDTH, PADDLE_HEIGHT);
-            paddle = new THREE.Mesh(paddleGeometry, paddleMaterial);
-            paddle.position.set(0, -GAME_AREA_HEIGHT / 2 + PADDLE_HEIGHT, 0);
-            scene.add(paddle);
-        }
-    }
-    createOrUpdatePaddle(); 
-
-    // 1.3 The Ball
-    const ballGeometry = new THREE.CircleGeometry(BALL_RADIUS, 32);
-    const ballMaterial = new THREE.MeshBasicMaterial({ color: 0xff4444 }); 
-    const ball = new THREE.Mesh(ballGeometry, ballMaterial);
-    ball.position.set(0, -2, 0);
-    scene.add(ball);
-
-    // 1.4 The Bricks (Closest row is hard)
-    function createBricks() {
-        bricks.forEach(brick => scene.remove(brick));
-        bricks.length = 0;
-
-        const totalBrickWidth = BRICK_COLUMNS * BRICK_WIDTH + (BRICK_COLUMNS - 1) * BRICK_PADDING;
-        const startX = -totalBrickWidth / 2 + BRICK_WIDTH / 2;
-        const startY = GAME_AREA_HEIGHT / 2 - BRICK_PADDING - BRICK_HEIGHT * 2;
-
-        for (let r = 0; r < BRICK_ROWS; r++) {
-            for (let c = 0; c < BRICK_COLUMNS; c++) {
-                
-                // Logic: The row closest to the paddle (the LAST row index) requires 2 hits.
-                const isClosestRow = (r === BRICK_ROWS - 1);
-                const hits = isClosestRow ? 2 : 1;
-                
-                const brickGeometry = new THREE.PlaneGeometry(BRICK_WIDTH, BRICK_HEIGHT);
-                let baseColor = `hsl(${r * 40 + c * 5}, 80%, 60%)`;
-                
-                if (hits === 2) {
-                    baseColor = '#AAAAAA'; 
-                }
-
-                const brickMaterial = new THREE.MeshBasicMaterial({ color: baseColor });
-                const brick = new THREE.Mesh(brickGeometry, brickMaterial);
-
-                brick.position.x = startX + c * (BRICK_WIDTH + BRICK_PADDING);
-                brick.position.y = startY - r * (BRICK_HEIGHT + BRICK_PADDING);
-
-                brick.userData.hitsRequired = hits;
-                brick.userData.originalColor = new THREE.Color(baseColor);
-                
-                scene.add(brick);
-                bricks.push(brick);
-            }
-        }
-    }
-    createBricks();
-
-
-    // --- 2. INPUT & MOTION HANDLERS ---
-
-    // Keyboard Input
-    window.addEventListener('keydown', (e) => {
-        const key = e.key.toUpperCase();
-        if (keys.hasOwnProperty(key)) {
-            keys[key] = true;
-        }
-    });
-
-    window.addEventListener('keyup', (e) => {
-        const key = e.key.toUpperCase();
-        if (keys.hasOwnProperty(key)) {
-            keys[key] = false;
-        }
-    });
-
-    // Touch Input (Fallback or secondary control)
-    const rendererElement = renderer.domElement;
-    rendererElement.addEventListener('touchstart', handleTouch, false);
-    rendererElement.addEventListener('touchmove', handleTouch, false);
-
-    function handleTouch(event) {
-        if (isMotionControlEnabled) return; 
-
-        event.preventDefault(); 
-        const touch = event.touches[0];
-        const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight);
-        const normalizedX = touch.clientX / window.innerWidth;
-        const targetX = (normalizedX * currentAreaWidth) - (currentAreaWidth / 2);
-        const halfWidthLimit = currentAreaWidth / 2 - PADDLE_WIDTH / 2;
-        paddle.position.x = Math.min(Math.max(targetX, -halfWidthLimit), halfWidthLimit);
-    }
-    
-    // --- GYROSCOPE/DEVICEMOTION INPUT ---
-
-    const getCurrentAreaWidth = () => FRUSTUM_SIZE * (window.innerWidth / window.innerHeight);
-
-    function handleDeviceMotion(event) {
-        if (!paddle) return;
-
-        // Use rotationRate.gamma (tilting phone side-to-side)
-        const tiltRate = event.rotationRate ? event.rotationRate.gamma : 0; 
-
-        const areaWidth = getCurrentAreaWidth();
-        const halfWidthLimit = areaWidth / 2 - PADDLE_WIDTH / 2;
-
-        let deltaX = tiltRate * motionSensitivity * 0.15; 
-
-        paddle.position.x += deltaX;
-
-        paddle.position.x = Math.min(Math.max(paddle.position.x, -halfWidthLimit), halfWidthLimit);
-    }
-
-    // New: Disables motion control and starts the game (for desktop/user choice)
-    function disableMotionControlsAndStart() {
-        if (permissionButton) permissionButton.style.display = 'none';
-        if (dismissButton) dismissButton.style.display = 'none';
-        isMotionControlEnabled = false;
-        console.log("Starting game with Keyboard/Touch controls.");
-    }
-
-    function enableMotionControls() {
-        if (isMotionControlEnabled) return;
-
-        window.addEventListener('devicemotion', handleDeviceMotion);
-        isMotionControlEnabled = true;
-        if (permissionButton) permissionButton.style.display = 'none';
-        if (dismissButton) dismissButton.style.display = 'none';
-        console.log("Device Motion Controls Enabled.");
+        // Orthographic Camera Setup
+        const FRUSTUM_SIZE = 15; 
+        const ASPECT = window.innerWidth / window.innerHeight; 
         
-        // Remove touch listeners to prevent input conflict
-        rendererElement.removeEventListener('touchstart', handleTouch, false);
-        rendererElement.removeEventListener('touchmove', handleTouch, false);
-    }
+        const camera = new THREE.OrthographicCamera(
+            -FRUSTUM_SIZE * ASPECT / 2,  
+            FRUSTUM_SIZE * ASPECT / 2,   
+            FRUSTUM_SIZE / 2,            
+            -FRUSTUM_SIZE / 2,           
+            1,                           
+            1000                         
+        );
+        camera.position.z = 10;
 
-    // EVENT LISTENERS FOR START BUTTONS
-    if (permissionButton && dismissButton) {
-        // 1. Tilt Permission Button Listener (Mobile path)
-        permissionButton.addEventListener('click', () => {
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(permissionState => {
-                        if (permissionState === 'granted') {
-                            enableMotionControls();
-                        } else {
-                            // If denied, fall back to keyboard/touch
-                            disableMotionControlsAndStart(); 
-                        }
-                    })
-                    .catch(err => {
-                        console.error("Error requesting motion permission. Falling back.", err);
-                        disableMotionControlsAndStart(); 
-                    });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Game Metrics & Constants
+        const GAME_AREA_HEIGHT = FRUSTUM_SIZE;
+        
+        // PADDLE ADJUSTMENTS 
+        let PADDLE_WIDTH_DEFAULT = 3; 
+        let PADDLE_WIDTH_MOBILE = 1.5; 
+        let PADDLE_WIDTH = PADDLE_WIDTH_DEFAULT;
+        const PADDLE_HEIGHT = 0.5; 
+        const PADDLE_SPEED = 0.2;
+
+        const BALL_RADIUS = 0.15;
+        const BASE_BALL_SPEED = 0.08;
+        
+        // BRICK CONSTANTS
+        const BRICK_WIDTH = 1.0; 
+        const BRICK_HEIGHT = 0.4;
+        const BRICK_ROWS = 7;    
+        const BRICK_COLUMNS = 9; 
+        const BRICK_PADDING = 0.1;
+        
+        // Game State Variables
+        let speedMultiplier = 1.0;
+        let ballDirectionX = 1; 
+        let ballDirectionY = 1; 
+        let score = 0;
+        const POINTS_PER_BRICK = 10;
+        const POINTS_PER_HARD_BRICK = 25;
+
+        const scoreElement = document.getElementById('scoreboard');
+        
+        // CONTROL VARIABLES
+        const leftButton = document.getElementById('left-button');
+        const rightButton = document.getElementById('right-button');
+        const controlButtons = document.getElementById('controls');
+        
+        const bricks = []; 
+        const keys = { W: false, A: false, S: false, D: false, LEFT_BTN: false, RIGHT_BTN: false };
+        
+        let ballVelocity = { x: BASE_BALL_SPEED, y: BASE_BALL_SPEED };
+
+
+        // --- 1. GAME OBJECT CREATION ---
+
+        // 1.1 Background
+        scene.background = new THREE.Color(0x330055);
+        const backgroundGeometry = new THREE.PlaneGeometry(FRUSTUM_SIZE * 5, FRUSTUM_SIZE * 5); 
+        const backgroundMaterial = new THREE.MeshBasicMaterial({ color: 0x330055, side: THREE.DoubleSide }); 
+        const backgroundMesh = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
+        backgroundMesh.position.set(0, 0, -1); 
+        scene.add(backgroundMesh);
+
+        // 1.2 The Paddle (Dynamic size)
+        let paddle; 
+        const paddleMaterial = new THREE.MeshBasicMaterial({ color: 0x9999ff }); 
+
+        function createOrUpdatePaddle() {
+            const currentAspect = window.innerWidth / window.innerHeight;
+            
+            // Determine paddle width based on aspect ratio
+            if (currentAspect < 1.0) { 
+                PADDLE_WIDTH = PADDLE_WIDTH_MOBILE; 
             } else {
-                // 2. Non-iOS/Desktop: directly attempt motion control
-                enableMotionControls();
+                PADDLE_WIDTH = PADDLE_WIDTH_DEFAULT; 
+            }
+
+            if (paddle) { 
+                if (paddle.geometry.parameters.width !== PADDLE_WIDTH) { 
+                    paddle.geometry.dispose(); 
+                    paddle.geometry = new THREE.PlaneGeometry(PADDLE_WIDTH, PADDLE_HEIGHT);
+                    
+                    const currentAreaWidth = FRUSTUM_SIZE * currentAspect;
+                    const halfWidthLimit = currentAreaWidth / 2 - PADDLE_WIDTH / 2;
+                    paddle.position.x = Math.min(Math.max(paddle.position.x, -halfWidthLimit), halfWidthLimit);
+                }
+            } else { // First time creation
+                const paddleGeometry = new THREE.PlaneGeometry(PADDLE_WIDTH, PADDLE_HEIGHT);
+                paddle = new THREE.Mesh(paddleGeometry, paddleMaterial);
+                paddle.position.set(0, -GAME_AREA_HEIGHT / 2 + PADDLE_HEIGHT, 0);
+                scene.add(paddle);
+            }
+        }
+        createOrUpdatePaddle(); 
+
+        // 1.3 The Ball
+        const ballGeometry = new THREE.CircleGeometry(BALL_RADIUS, 32);
+        const ballMaterial = new THREE.MeshBasicMaterial({ color: 0xff4444 }); 
+        const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+        ball.position.set(0, -2, 0);
+        scene.add(ball);
+
+        // 1.4 The Bricks (Closest row is hard)
+        function createBricks() {
+            bricks.forEach(brick => scene.remove(brick));
+            bricks.length = 0;
+
+            const totalBrickWidth = BRICK_COLUMNS * BRICK_WIDTH + (BRICK_COLUMNS - 1) * BRICK_PADDING;
+            const startX = -totalBrickWidth / 2 + BRICK_WIDTH / 2;
+            const startY = GAME_AREA_HEIGHT / 2 - BRICK_PADDING - BRICK_HEIGHT * 2;
+
+            for (let r = 0; r < BRICK_ROWS; r++) {
+                for (let c = 0; c < BRICK_COLUMNS; c++) {
+                    
+                    const isClosestRow = (r === BRICK_ROWS - 1);
+                    const hits = isClosestRow ? 2 : 1;
+                    
+                    const brickGeometry = new THREE.PlaneGeometry(BRICK_WIDTH, BRICK_HEIGHT);
+                    let baseColor = `hsl(${r * 40 + c * 5}, 80%, 60%)`;
+                    
+                    if (hits === 2) {
+                        baseColor = '#AAAAAA'; 
+                    }
+
+                    const brickMaterial = new THREE.MeshBasicMaterial({ color: baseColor });
+                    const brick = new THREE.Mesh(brickGeometry, brickMaterial);
+
+                    brick.position.x = startX + c * (BRICK_WIDTH + BRICK_PADDING);
+                    brick.position.y = startY - r * (BRICK_HEIGHT + BRICK_PADDING);
+
+                    brick.userData.hitsRequired = hits;
+                    brick.userData.originalColor = new THREE.Color(baseColor);
+                    
+                    scene.add(brick);
+                    bricks.push(brick);
+                }
+            }
+        }
+        createBricks();
+
+
+        // --- 2. INPUT HANDLERS (Keyboard and On-Screen Buttons) ---
+
+        // Keyboard Input
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toUpperCase();
+            if (keys.hasOwnProperty(key)) {
+                keys[key] = true;
             }
         });
 
-        // 3. Dismiss/Keyboard Button Listener (Desktop path/User choice)
-        dismissButton.addEventListener('click', disableMotionControlsAndStart);
-    }
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toUpperCase();
+            if (keys.hasOwnProperty(key)) {
+                keys[key] = false;
+            }
+        });
 
-
-    // --- 3. MOVEMENT & GAME LOGIC FUNCTIONS ---
-
-    function updateScoreDisplay() {
-        scoreElement.innerText = `Score: ${score}`;
-    }
-
-    function recalculateVelocity() {
-        ballVelocity.x = BASE_BALL_SPEED * ballDirectionX * speedMultiplier;
-        ballVelocity.y = BASE_BALL_SPEED * ballDirectionY * speedMultiplier;
-    }
-
-    function updatePaddle() {
-        // Only run keyboard movement if motion control is NOT enabled
-        if (isMotionControlEnabled) return; 
-
-        const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight); 
-
-        if (keys.A) paddle.position.x -= PADDLE_SPEED;
-        if (keys.D) paddle.position.x += PADDLE_SPEED;
-
-        const halfWidth = currentAreaWidth / 2 - PADDLE_WIDTH / 2;
-        if (paddle.position.x > halfWidth) paddle.position.x = halfWidth;
-        if (paddle.position.x < -halfWidth) paddle.position.x = -halfWidth;
-    }
-
-    function updateBall() {
-        const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight);
-
-        ball.position.x += ballVelocity.x;
-        ball.position.y += ballVelocity.y;
-
-        const rightBoundary = currentAreaWidth / 2 - BALL_RADIUS;
-        if (ball.position.x > rightBoundary || ball.position.x < -rightBoundary) {
-            ballDirectionX *= -1;
-            recalculateVelocity();
-        }
-
-        const topBoundary = GAME_AREA_HEIGHT / 2 - BALL_RADIUS;
-        if (ball.position.y > topBoundary) {
-            ballDirectionY *= -1;
-            recalculateVelocity();
-        }
-
-        if (ball.position.y < -GAME_AREA_HEIGHT / 2) {
-            console.log("Game Over! Score:", score);
-            // Reset state
-            ball.position.set(0, 0, 0);
-            ballDirectionY = -1;
-            speedMultiplier = 1.0;
-            score = 0;
-            updateScoreDisplay();
-            createBricks(); 
-            recalculateVelocity();
-        }
-    }
-
-    function checkCollisions() {
-        // --- PADDLE COLLISION ---
-        if (ball.position.y - BALL_RADIUS < paddle.position.y + PADDLE_HEIGHT / 2 &&
-            ball.position.y - BALL_RADIUS > paddle.position.y - PADDLE_HEIGHT / 2 &&
-            ball.position.x + BALL_RADIUS > paddle.position.x - PADDLE_WIDTH / 2 &&
-            ball.position.x - BALL_RADIUS < paddle.position.x + PADDLE_WIDTH / 2 &&
-            ballVelocity.y < 0 
-        ) {
-            ballDirectionY *= -1; 
-            const hitPoint = (ball.position.x - paddle.position.x) / (PADDLE_WIDTH / 2); 
-            ballDirectionX = hitPoint * 1.5; 
-            recalculateVelocity();
-        }
-
-        // --- BRICK COLLISION (Handles Multi-Hit Bricks) ---
-        for (let i = bricks.length - 1; i >= 0; i--) {
-            const brick = bricks[i];
-
-            if (ball.position.x + BALL_RADIUS > brick.position.x - BRICK_WIDTH / 2 &&
-                ball.position.x - BALL_RADIUS < brick.position.x + BRICK_WIDTH / 2 &&
-                ball.position.y + BALL_RADIUS > brick.position.y - BRICK_HEIGHT / 2 &&
-                ball.position.y - BALL_RADIUS < brick.position.y + BRICK_HEIGHT / 2) {
-
-                // Reverse Axis
-                const xDiff = Math.abs(ball.position.x - brick.position.x);
-                const yDiff = Math.abs(ball.position.y - brick.position.y);
-                
-                if (xDiff > yDiff) {
-                    ballDirectionX *= -1; 
-                } else {
-                    ballDirectionY *= -1; 
-                }
-                
-                // Process Hit
-                brick.userData.hitsRequired -= 1;
-                
-                if (brick.userData.hitsRequired <= 0) {
-                    // BRICK IS DESTROYED
-                    scene.remove(brick);
-                    bricks.splice(i, 1);
-                    
-                    const points = brick.userData.originalColor.getHex() === 0xAAAAAA ? POINTS_PER_HARD_BRICK : POINTS_PER_BRICK;
-                    score += points;
-                } else {
-                    // BRICK IS DAMAGED BUT STILL ALIVE
-                    const currentColor = brick.material.color.getHex();
-                    brick.material.color.setHex(currentColor * 0.7); 
-                    score += POINTS_PER_BRICK / 2;
-                }
-
-                updateScoreDisplay();
-
-                // Speed up
-                speedMultiplier += 0.015; 
-                recalculateVelocity();
-                
-                // Win Condition
-                if (bricks.length === 0) {
-                    console.log("YOU WIN! Reloading level...");
-                    createBricks(); 
-                    ball.position.set(0, -2, 0); 
-                    speedMultiplier = 1.0; 
-                    recalculateVelocity();
-                }
-
-                break; 
+        // On-Screen Button Input (Touch/Click)
+        function setButtonState(buttonKey, state) {
+            if (keys.hasOwnProperty(buttonKey)) {
+                keys[buttonKey] = state;
             }
         }
-    }
 
-    // --- 4. ANIMATION / GAME LOOP & RESPONSIVENESS ---
+        if (leftButton) {
+            leftButton.addEventListener('mousedown', () => setButtonState('LEFT_BTN', true));
+            leftButton.addEventListener('touchstart', (e) => { e.preventDefault(); setButtonState('LEFT_BTN', true); });
 
-    function animate() {
-        requestAnimationFrame(animate);
+            leftButton.addEventListener('mouseup', () => setButtonState('LEFT_BTN', false));
+            leftButton.addEventListener('touchend', () => setButtonState('LEFT_BTN', false));
+            leftButton.addEventListener('touchcancel', () => setButtonState('LEFT_BTN', false));
+        }
 
-        updatePaddle(); // Keyboard/Desktop/Fallback movement
-        updateBall();
-        checkCollisions();
+        if (rightButton) {
+            rightButton.addEventListener('mousedown', () => setButtonState('RIGHT_BTN', true));
+            rightButton.addEventListener('touchstart', (e) => { e.preventDefault(); setButtonState('RIGHT_BTN', true); });
 
-        renderer.render(scene, camera);
-    }
+            rightButton.addEventListener('mouseup', () => setButtonState('RIGHT_BTN', false));
+            rightButton.addEventListener('touchend', () => setButtonState('RIGHT_BTN', false));
+            rightButton.addEventListener('touchcancel', () => setButtonState('RIGHT_BTN', false));
+        }
 
-    // Responsive Resize Handler 
-    window.addEventListener('resize', () => {
-        const newAspect = window.innerWidth / window.innerHeight;
-        
-        // 1. Update Camera Boundaries
-        camera.left = -FRUSTUM_SIZE * newAspect / 2;
-        camera.right = FRUSTUM_SIZE * newAspect / 2;
-        camera.updateProjectionMatrix();
-        
-        // 2. Update Renderer Size
-        renderer.setSize(window.innerWidth, window.innerHeight);
 
-        // 3. Update Paddle Size
-        createOrUpdatePaddle(); 
-    });
+        // --- 3. MOVEMENT & GAME LOGIC FUNCTIONS ---
 
-    // We only call animate() once, and the input handlers will activate movement.
-    animate(); 
+        function updateScoreDisplay() {
+            scoreElement.innerText = `Score: ${score}`;
+        }
 
-</script>
+        function recalculateVelocity() {
+            ballVelocity.x = BASE_BALL_SPEED * ballDirectionX * speedMultiplier;
+            ballVelocity.y = BASE_BALL_SPEED * ballDirectionY * speedMultiplier;
+        }
 
-    </body>
+        function updatePaddle() {
+            const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight); 
+            let move = 0;
+
+            // Check Keyboard Input
+            if (keys.A) move -= PADDLE_SPEED;
+            if (keys.D) move += PADDLE_SPEED;
+            
+            // Check On-Screen Button Input
+            if (keys.LEFT_BTN) move -= PADDLE_SPEED;
+            if (keys.RIGHT_BTN) move += PADDLE_SPEED;
+            
+            paddle.position.x += move;
+
+            const halfWidth = currentAreaWidth / 2 - PADDLE_WIDTH / 2;
+            if (paddle.position.x > halfWidth) paddle.position.x = halfWidth;
+            if (paddle.position.x < -halfWidth) paddle.position.x = -halfWidth;
+        }
+
+        function updateBall() {
+            const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight);
+
+            ball.position.x += ballVelocity.x;
+            ball.position.y += ballVelocity.y;
+
+            const rightBoundary = currentAreaWidth / 2 - BALL_RADIUS;
+            if (ball.position.x > rightBoundary || ball.position.x < -rightBoundary) {
+                ballDirectionX *= -1;
+                recalculateVelocity();
+            }
+
+            const topBoundary = GAME_AREA_HEIGHT / 2 - BALL_RADIUS;
+            if (ball.position.y > topBoundary) {
+                ballDirectionY *= -1;
+                recalculateVelocity();
+            }
+
+            if (ball.position.y < -GAME_AREA_HEIGHT / 2) {
+                console.log("Game Over! Score:", score);
+                // Reset state
+                ball.position.set(0, 0, 0);
+                ballDirectionY = -1;
+                speedMultiplier = 1.0;
+                score = 0;
+                updateScoreDisplay();
+                createBricks(); 
+                recalculateVelocity();
+            }
+        }
+
+        function checkCollisions() {
+            // --- PADDLE COLLISION ---
+            if (ball.position.y - BALL_RADIUS < paddle.position.y + PADDLE_HEIGHT / 2 &&
+                ball.position.y - BALL_RADIUS > paddle.position.y - PADDLE_HEIGHT / 2 &&
+                ball.position.x + BALL_RADIUS > paddle.position.x - PADDLE_WIDTH / 2 &&
+                ball.position.x - BALL_RADIUS < paddle.position.x + PADDLE_WIDTH / 2 &&
+                ballVelocity.y < 0 
+            ) {
+                ballDirectionY *= -1; 
+                const hitPoint = (ball.position.x - paddle.position.x) / (PADDLE_WIDTH / 2); 
+                ballDirectionX = hitPoint * 1.5; 
+                recalculateVelocity();
+            }
+
+            // --- BRICK COLLISION (Handles Multi-Hit Bricks) ---
+            for (let i = bricks.length - 1; i >= 0; i--) {
+                const brick = bricks[i];
+
+                if (ball.position.x + BALL_RADIUS > brick.position.x - BRICK_WIDTH / 2 &&
+                    ball.position.x - BALL_RADIUS < brick.position.x + BRICK_WIDTH / 2 &&
+                    ball.position.y + BALL_RADIUS > brick.position.y - BRICK_HEIGHT / 2 &&
+                    ball.position.y - BALL_RADIUS < brick.position.y + BRICK_HEIGHT / 2) {
+
+                    // Reverse Axis
+                    const xDiff = Math.abs(ball.position.x - brick.position.x);
+                    const yDiff = Math.abs(ball.position.y - brick.position.y);
+                    
+                    if (xDiff > yDiff) {
+                        ballDirectionX *= -1; 
+                    } else {
+                        ballDirectionY *= -1; 
+                    }
+                    
+                    // Process Hit
+                    brick.userData.hitsRequired -= 1;
+                    
+                    if (brick.userData.hitsRequired <= 0) {
+                        // BRICK IS DESTROYED
+                        scene.remove(brick);
+                        bricks.splice(i, 1);
+                        
+                        const points = brick.userData.originalColor.getHex() === 0xAAAAAA ? POINTS_PER_HARD_BRICK : POINTS_PER_BRICK;
+                        score += points;
+                    } else {
+                        // BRICK IS DAMAGED BUT STILL ALIVE
+                        const currentColor = brick.material.color.getHex();
+                        brick.material.color.setHex(currentColor * 0.7); 
+                        score += POINTS_PER_BRICK / 2;
+                    }
+
+                    updateScoreDisplay();
+
+                    // Speed up
+                    speedMultiplier += 0.015; 
+                    recalculateVelocity();
+                    
+                    // Win Condition
+                    if (bricks.length === 0) {
+                        console.log("YOU WIN! Reloading level...");
+                        createBricks(); 
+                        ball.position.set(0, -2, 0); 
+                        speedMultiplier = 1.0; 
+                        recalculateVelocity();
+                    }
+
+                    break; 
+                }
+            }
+        }
+
+        // --- 4. ANIMATION / GAME LOOP & RESPONSIVENESS ---
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            updatePaddle(); 
+            updateBall();
+            checkCollisions();
+
+            renderer.render(scene, camera);
+        }
+
+        // Responsive Resize Handler 
+        window.addEventListener('resize', () => {
+            const newAspect = window.innerWidth / window.innerHeight;
+            
+            // 1. Update Camera Boundaries
+            camera.left = -FRUSTUM_SIZE * newAspect / 2;
+            camera.right = FRUSTUM_SIZE * newAspect / 2;
+            camera.updateProjectionMatrix();
+            
+            // 2. Update Renderer Size
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            // 3. Update Paddle Size
+            createOrUpdatePaddle(); 
+        });
+
+        animate(); // Start the game loop
+
+    </script>
+</body>
 </html>
