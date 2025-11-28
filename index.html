@@ -4,9 +4,18 @@
     </head>
 <body>
 
+<button id="motion-permission-button" style="position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); z-index: 100; padding: 10px 20px;">
+    Start Game (Enable Tilt)
+</button>
+<button id="keyboard-dismiss-button" style="position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); z-index: 100; padding: 10px 20px;">
+    Use Keyboard/Touch
+</button>
+
         <div style="position: absolute; top: 5px; left: 10px; color: white; font-family: sans-serif; font-size: 20px;">
         AIC Teens Digital class
+        
     </div>
+
 
     <div id="scoreboard" style="position: absolute; top: 20px; left: 10px; color: white; font-family: sans-serif; font-size: 24px;">
         Score: 0
@@ -20,43 +29,42 @@
     const scene = new THREE.Scene();
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     
-    // Orthographic Camera Setup: FRUSTUM_SIZE controls the fixed vertical size of the visible world
+    // Orthographic Camera Setup
     const FRUSTUM_SIZE = 15; 
-    const ASPECT = window.innerWidth / window.innerHeight; // Initial aspect, will be updated
+    const ASPECT = window.innerWidth / window.innerHeight; 
     
     const camera = new THREE.OrthographicCamera(
-        -FRUSTUM_SIZE * ASPECT / 2,  // Left
-        FRUSTUM_SIZE * ASPECT / 2,   // Right
-        FRUSTUM_SIZE / 2,            // Top
-        -FRUSTUM_SIZE / 2,           // Bottom
-        1,                           // Near
-        1000                         // Far
+        -FRUSTUM_SIZE * ASPECT / 2,  
+        FRUSTUM_SIZE * ASPECT / 2,   
+        FRUSTUM_SIZE / 2,            
+        -FRUSTUM_SIZE / 2,           
+        1,                           
+        1000                         
     );
     camera.position.z = 10;
 
-    // Renderer and Canvas Setup
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
     // Game Metrics & Constants
     const GAME_AREA_HEIGHT = FRUSTUM_SIZE;
     
-    // Paddle Constants (now dynamic for width)
-    let PADDLE_WIDTH_DEFAULT = 3; // Desktop default
-    let PADDLE_WIDTH_MOBILE = 2;  // Mobile default
-    let PADDLE_WIDTH = PADDLE_WIDTH_DEFAULT; // Initial width
+    // PADDLE ADJUSTMENTS 
+    let PADDLE_WIDTH_DEFAULT = 3; 
+    let PADDLE_WIDTH_MOBILE = 1.5; // Smallest size for mobile
+    let PADDLE_WIDTH = PADDLE_WIDTH_DEFAULT;
     const PADDLE_HEIGHT = 0.5; 
     const PADDLE_SPEED = 0.2;
 
     const BALL_RADIUS = 0.15;
     const BASE_BALL_SPEED = 0.08;
     
-    // Brick Constants (smaller and more numerous)
-    const BRICK_WIDTH = 1.0;  // Smaller brick width
-    const BRICK_HEIGHT = 0.4; // Smaller brick height
-    const BRICK_ROWS = 7;    // More rows
-    const BRICK_COLUMNS = 9; // More columns
-    const BRICK_PADDING = 0.1; // Reduced padding
+    // BRICK CONSTANTS (Smaller and more numerous)
+    const BRICK_WIDTH = 1.0; 
+    const BRICK_HEIGHT = 0.4;
+    const BRICK_ROWS = 7;    
+    const BRICK_COLUMNS = 9; 
+    const BRICK_PADDING = 0.1;
     
     // Game State Variables
     let speedMultiplier = 1.0;
@@ -64,43 +72,47 @@
     let ballDirectionY = 1; 
     let score = 0;
     const POINTS_PER_BRICK = 10;
-    
+    const POINTS_PER_HARD_BRICK = 25;
+
     const scoreElement = document.getElementById('scoreboard');
-    const bricks = [];
+    const permissionButton = document.getElementById('motion-permission-button');
+    const dismissButton = document.getElementById('keyboard-dismiss-button');
+
+    const bricks = []; 
     const keys = { W: false, A: false, S: false, D: false };
     
     let ballVelocity = { x: BASE_BALL_SPEED, y: BASE_BALL_SPEED };
+    let isMotionControlEnabled = false;
+    const motionSensitivity = 0.5; 
 
 
     // --- 1. GAME OBJECT CREATION ---
 
-    // 1.1 Background (Colorful/Gradient look)
+    // 1.1 Background
     const backgroundGeometry = new THREE.PlaneGeometry(FRUSTUM_SIZE * 5, FRUSTUM_SIZE * 5); 
     const backgroundMaterial = new THREE.MeshBasicMaterial({ color: 0x330055, side: THREE.DoubleSide }); 
     const backgroundMesh = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
     backgroundMesh.position.set(0, 0, -1); 
     scene.add(backgroundMesh);
 
-    // 1.2 The Paddle (using a function for dynamic creation/recreation)
-    let paddle; // Declare globally so it can be re-assigned
+    // 1.2 The Paddle (Dynamic size)
+    let paddle; 
     const paddleMaterial = new THREE.MeshBasicMaterial({ color: 0x9999ff }); 
 
     function createOrUpdatePaddle() {
         const currentAspect = window.innerWidth / window.innerHeight;
         
-        // Determine paddle width based on aspect ratio
-        if (currentAspect < 0.75) { // Typical portrait phone aspect
+        if (currentAspect < 0.75) { 
             PADDLE_WIDTH = PADDLE_WIDTH_MOBILE; 
         } else {
             PADDLE_WIDTH = PADDLE_WIDTH_DEFAULT; 
         }
 
-        if (paddle) { // If paddle already exists, dispose and replace geometry
-            if (paddle.geometry.parameters.width !== PADDLE_WIDTH) { // Only update if width changed
+        if (paddle) { 
+            if (paddle.geometry.parameters.width !== PADDLE_WIDTH) { 
                 paddle.geometry.dispose(); 
                 paddle.geometry = new THREE.PlaneGeometry(PADDLE_WIDTH, PADDLE_HEIGHT);
                 
-                // Also re-clamp position after geometry change if needed
                 const currentAreaWidth = FRUSTUM_SIZE * currentAspect;
                 const halfWidthLimit = currentAreaWidth / 2 - PADDLE_WIDTH / 2;
                 paddle.position.x = Math.min(Math.max(paddle.position.x, -halfWidthLimit), halfWidthLimit);
@@ -112,7 +124,7 @@
             scene.add(paddle);
         }
     }
-    createOrUpdatePaddle(); // Initial creation
+    createOrUpdatePaddle(); 
 
     // 1.3 The Ball
     const ballGeometry = new THREE.CircleGeometry(BALL_RADIUS, 32);
@@ -121,54 +133,47 @@
     ball.position.set(0, -2, 0);
     scene.add(ball);
 
-    // 1.4 The Bricks
-// 1.4 The Bricks
-function createBricks() {
-    bricks.forEach(brick => scene.remove(brick));
-    bricks.length = 0;
+    // 1.4 The Bricks (Closest row is hard)
+    function createBricks() {
+        bricks.forEach(brick => scene.remove(brick));
+        bricks.length = 0;
 
-    const totalBrickWidth = BRICK_COLUMNS * BRICK_WIDTH + (BRICK_COLUMNS - 1) * BRICK_PADDING;
-    const startX = -totalBrickWidth / 2 + BRICK_WIDTH / 2;
-    const startY = GAME_AREA_HEIGHT / 2 - BRICK_PADDING - BRICK_HEIGHT * 2;
+        const totalBrickWidth = BRICK_COLUMNS * BRICK_WIDTH + (BRICK_COLUMNS - 1) * BRICK_PADDING;
+        const startX = -totalBrickWidth / 2 + BRICK_WIDTH / 2;
+        const startY = GAME_AREA_HEIGHT / 2 - BRICK_PADDING - BRICK_HEIGHT * 2;
 
-    for (let r = 0; r < BRICK_ROWS; r++) {
-        for (let c = 0; c < BRICK_COLUMNS; c++) {
-            
-            // --- UPDATED LOGIC HERE ---
-            // Set health: The LAST row (r = BRICK_ROWS - 1) requires 2 hits.
-            const isClosestRow = (r === BRICK_ROWS - 1);
-            const hits = isClosestRow ? 2 : 1;
-            // --------------------------
-            
-            const brickGeometry = new THREE.PlaneGeometry(BRICK_WIDTH, BRICK_HEIGHT);
-            
-            // Define base color based on row
-            let baseColor = `hsl(${r * 40 + c * 5}, 80%, 60%)`;
-            
-            // If hard brick, use a distinctive color
-            if (hits === 2) {
-                baseColor = '#AAAAAA'; 
+        for (let r = 0; r < BRICK_ROWS; r++) {
+            for (let c = 0; c < BRICK_COLUMNS; c++) {
+                
+                // Logic: The row closest to the paddle (the LAST row index) requires 2 hits.
+                const isClosestRow = (r === BRICK_ROWS - 1);
+                const hits = isClosestRow ? 2 : 1;
+                
+                const brickGeometry = new THREE.PlaneGeometry(BRICK_WIDTH, BRICK_HEIGHT);
+                let baseColor = `hsl(${r * 40 + c * 5}, 80%, 60%)`;
+                
+                if (hits === 2) {
+                    baseColor = '#AAAAAA'; 
+                }
+
+                const brickMaterial = new THREE.MeshBasicMaterial({ color: baseColor });
+                const brick = new THREE.Mesh(brickGeometry, brickMaterial);
+
+                brick.position.x = startX + c * (BRICK_WIDTH + BRICK_PADDING);
+                brick.position.y = startY - r * (BRICK_HEIGHT + BRICK_PADDING);
+
+                brick.userData.hitsRequired = hits;
+                brick.userData.originalColor = new THREE.Color(baseColor);
+                
+                scene.add(brick);
+                bricks.push(brick);
             }
-
-            const brickMaterial = new THREE.MeshBasicMaterial({ color: baseColor });
-            const brick = new THREE.Mesh(brickGeometry, brickMaterial);
-
-            brick.position.x = startX + c * (BRICK_WIDTH + BRICK_PADDING);
-            brick.position.y = startY - r * (BRICK_HEIGHT + BRICK_PADDING);
-
-            // Attach custom properties to the THREE.Mesh object
-            brick.userData.hitsRequired = hits;
-            brick.userData.originalColor = new THREE.Color(baseColor);
-            
-            scene.add(brick);
-            bricks.push(brick);
         }
     }
-}
     createBricks();
 
 
-    // --- 2. INPUT HANDLERS (Keyboard and Touch) ---
+    // --- 2. INPUT & MOTION HANDLERS ---
 
     // Keyboard Input
     window.addEventListener('keydown', (e) => {
@@ -185,24 +190,93 @@ function createBricks() {
         }
     });
 
-    // Touch Input (Smartphone Compatibility)
+    // Touch Input (Fallback or secondary control)
     const rendererElement = renderer.domElement;
     rendererElement.addEventListener('touchstart', handleTouch, false);
     rendererElement.addEventListener('touchmove', handleTouch, false);
 
     function handleTouch(event) {
-        event.preventDefault(); // Prevents mobile scrolling/zooming
+        if (isMotionControlEnabled) return; 
 
+        event.preventDefault(); 
         const touch = event.touches[0];
-        
         const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight);
-        
         const normalizedX = touch.clientX / window.innerWidth;
         const targetX = (normalizedX * currentAreaWidth) - (currentAreaWidth / 2);
-
         const halfWidthLimit = currentAreaWidth / 2 - PADDLE_WIDTH / 2;
         paddle.position.x = Math.min(Math.max(targetX, -halfWidthLimit), halfWidthLimit);
     }
+    
+    // --- GYROSCOPE/DEVICEMOTION INPUT ---
+
+    const getCurrentAreaWidth = () => FRUSTUM_SIZE * (window.innerWidth / window.innerHeight);
+
+    function handleDeviceMotion(event) {
+        if (!paddle) return;
+
+        // Use rotationRate.gamma (tilting phone side-to-side)
+        const tiltRate = event.rotationRate ? event.rotationRate.gamma : 0; 
+
+        const areaWidth = getCurrentAreaWidth();
+        const halfWidthLimit = areaWidth / 2 - PADDLE_WIDTH / 2;
+
+        let deltaX = tiltRate * motionSensitivity * 0.15; 
+
+        paddle.position.x += deltaX;
+
+        paddle.position.x = Math.min(Math.max(paddle.position.x, -halfWidthLimit), halfWidthLimit);
+    }
+
+    // New: Disables motion control and starts the game (for desktop/user choice)
+    function disableMotionControlsAndStart() {
+        if (permissionButton) permissionButton.style.display = 'none';
+        if (dismissButton) dismissButton.style.display = 'none';
+        isMotionControlEnabled = false;
+        console.log("Starting game with Keyboard/Touch controls.");
+    }
+
+    function enableMotionControls() {
+        if (isMotionControlEnabled) return;
+
+        window.addEventListener('devicemotion', handleDeviceMotion);
+        isMotionControlEnabled = true;
+        if (permissionButton) permissionButton.style.display = 'none';
+        if (dismissButton) dismissButton.style.display = 'none';
+        console.log("Device Motion Controls Enabled.");
+        
+        // Remove touch listeners to prevent input conflict
+        rendererElement.removeEventListener('touchstart', handleTouch, false);
+        rendererElement.removeEventListener('touchmove', handleTouch, false);
+    }
+
+    // EVENT LISTENERS FOR START BUTTONS
+    if (permissionButton && dismissButton) {
+        // 1. Tilt Permission Button Listener (Mobile path)
+        permissionButton.addEventListener('click', () => {
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            enableMotionControls();
+                        } else {
+                            // If denied, fall back to keyboard/touch
+                            disableMotionControlsAndStart(); 
+                        }
+                    })
+                    .catch(err => {
+                        console.error("Error requesting motion permission. Falling back.", err);
+                        disableMotionControlsAndStart(); 
+                    });
+            } else {
+                // 2. Non-iOS/Desktop: directly attempt motion control
+                enableMotionControls();
+            }
+        });
+
+        // 3. Dismiss/Keyboard Button Listener (Desktop path/User choice)
+        dismissButton.addEventListener('click', disableMotionControlsAndStart);
+    }
+
 
     // --- 3. MOVEMENT & GAME LOGIC FUNCTIONS ---
 
@@ -216,6 +290,9 @@ function createBricks() {
     }
 
     function updatePaddle() {
+        // Only run keyboard movement if motion control is NOT enabled
+        if (isMotionControlEnabled) return; 
+
         const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight); 
 
         if (keys.A) paddle.position.x -= PADDLE_SPEED;
@@ -252,7 +329,7 @@ function createBricks() {
             speedMultiplier = 1.0;
             score = 0;
             updateScoreDisplay();
-            createBricks(); // Re-create bricks on game over
+            createBricks(); 
             recalculateVelocity();
         }
     }
@@ -266,18 +343,15 @@ function createBricks() {
             ballVelocity.y < 0 
         ) {
             ballDirectionY *= -1; 
-            
             const hitPoint = (ball.position.x - paddle.position.x) / (PADDLE_WIDTH / 2); 
             ballDirectionX = hitPoint * 1.5; 
-            
             recalculateVelocity();
         }
 
-        // --- BRICK COLLISION ---
+        // --- BRICK COLLISION (Handles Multi-Hit Bricks) ---
         for (let i = bricks.length - 1; i >= 0; i--) {
             const brick = bricks[i];
 
-            // AABB Check
             if (ball.position.x + BALL_RADIUS > brick.position.x - BRICK_WIDTH / 2 &&
                 ball.position.x - BALL_RADIUS < brick.position.x + BRICK_WIDTH / 2 &&
                 ball.position.y + BALL_RADIUS > brick.position.y - BRICK_HEIGHT / 2 &&
@@ -293,13 +367,26 @@ function createBricks() {
                     ballDirectionY *= -1; 
                 }
                 
-                // Remove brick, Score, and Speed up
-                scene.remove(brick);
-                bricks.splice(i, 1);
+                // Process Hit
+                brick.userData.hitsRequired -= 1;
                 
-                score += POINTS_PER_BRICK;
+                if (brick.userData.hitsRequired <= 0) {
+                    // BRICK IS DESTROYED
+                    scene.remove(brick);
+                    bricks.splice(i, 1);
+                    
+                    const points = brick.userData.originalColor.getHex() === 0xAAAAAA ? POINTS_PER_HARD_BRICK : POINTS_PER_BRICK;
+                    score += points;
+                } else {
+                    // BRICK IS DAMAGED BUT STILL ALIVE
+                    const currentColor = brick.material.color.getHex();
+                    brick.material.color.setHex(currentColor * 0.7); 
+                    score += POINTS_PER_BRICK / 2;
+                }
+
                 updateScoreDisplay();
 
+                // Speed up
                 speedMultiplier += 0.015; 
                 recalculateVelocity();
                 
@@ -308,7 +395,7 @@ function createBricks() {
                     console.log("YOU WIN! Reloading level...");
                     createBricks(); 
                     ball.position.set(0, -2, 0); 
-                    speedMultiplier = 1.0; // Reset speed for new level
+                    speedMultiplier = 1.0; 
                     recalculateVelocity();
                 }
 
@@ -322,7 +409,7 @@ function createBricks() {
     function animate() {
         requestAnimationFrame(animate);
 
-        updatePaddle();
+        updatePaddle(); // Keyboard/Desktop/Fallback movement
         updateBall();
         checkCollisions();
 
@@ -341,11 +428,12 @@ function createBricks() {
         // 2. Update Renderer Size
         renderer.setSize(window.innerWidth, window.innerHeight);
 
-        // 3. Update Paddle Size (and position if needed)
+        // 3. Update Paddle Size
         createOrUpdatePaddle(); 
     });
 
-    animate(); // Start the game loop
+    // We only call animate() once, and the input handlers will activate movement.
+    animate(); 
 
 </script>
 
