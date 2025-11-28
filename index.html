@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html>
+<head>
+    </head>
+<body>
+    <div id="scoreboard" style="position: absolute; top: 10px; left: 10px; color: white; font-family: sans-serif; font-size: 24px;">
+        Score: 0
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+
+<script>
+    // --- 0. GAME CONSTANTS & INITIALIZATION ---
+
+    const scene = new THREE.Scene();
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    
+    // Orthographic Camera Setup: FRUSTUM_SIZE controls the fixed vertical size of the visible world
+    const FRUSTUM_SIZE = 15; 
+    const ASPECT = window.innerWidth / window.innerHeight; // Initial aspect, will be updated
+    
+    const camera = new THREE.OrthographicCamera(
+        -FRUSTUM_SIZE * ASPECT / 2,  // Left
+        FRUSTUM_SIZE * ASPECT / 2,   // Right
+        FRUSTUM_SIZE / 2,            // Top
+        -FRUSTUM_SIZE / 2,           // Bottom
+        1,                           // Near
+        1000                         // Far
+    );
+    camera.position.z = 10;
+
+    // Renderer and Canvas Setup
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Game Metrics & Constants
+    const GAME_AREA_HEIGHT = FRUSTUM_SIZE;
+    
+    // Paddle Constants (now dynamic for width)
+    let PADDLE_WIDTH_DEFAULT = 3; // Desktop default
+    let PADDLE_WIDTH_MOBILE = 2;  // Mobile default
+    let PADDLE_WIDTH = PADDLE_WIDTH_DEFAULT; // Initial width
+    const PADDLE_HEIGHT = 0.5; 
+    const PADDLE_SPEED = 0.2;
+
+    const BALL_RADIUS = 0.15;
+    const BASE_BALL_SPEED = 0.08;
+    
+    // Brick Constants (smaller and more numerous)
+    const BRICK_WIDTH = 1.0;  // Smaller brick width
+    const BRICK_HEIGHT = 0.4; // Smaller brick height
+    const BRICK_ROWS = 7;    // More rows
+    const BRICK_COLUMNS = 9; // More columns
+    const BRICK_PADDING = 0.1; // Reduced padding
+    
+    // Game State Variables
+    let speedMultiplier = 1.0;
+    let ballDirectionX = 1; 
+    let ballDirectionY = 1; 
+    let score = 0;
+    const POINTS_PER_BRICK = 10;
+    
+    const scoreElement = document.getElementById('scoreboard');
+    const bricks = [];
+    const keys = { W: false, A: false, S: false, D: false };
+    
+    let ballVelocity = { x: BASE_BALL_SPEED, y: BASE_BALL_SPEED };
+
+
+    // --- 1. GAME OBJECT CREATION ---
+
+    // 1.1 Background (Colorful/Gradient look)
+    const backgroundGeometry = new THREE.PlaneGeometry(FRUSTUM_SIZE * 5, FRUSTUM_SIZE * 5); 
+    const backgroundMaterial = new THREE.MeshBasicMaterial({ color: 0x330055, side: THREE.DoubleSide }); 
+    const backgroundMesh = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
+    backgroundMesh.position.set(0, 0, -1); 
+    scene.add(backgroundMesh);
+
+    // 1.2 The Paddle (using a function for dynamic creation/recreation)
+    let paddle; // Declare globally so it can be re-assigned
+    const paddleMaterial = new THREE.MeshBasicMaterial({ color: 0x9999ff }); 
+
+    function createOrUpdatePaddle() {
+        const currentAspect = window.innerWidth / window.innerHeight;
+        
+        // Determine paddle width based on aspect ratio
+        if (currentAspect < 0.75) { // Typical portrait phone aspect
+            PADDLE_WIDTH = PADDLE_WIDTH_MOBILE; 
+        } else {
+            PADDLE_WIDTH = PADDLE_WIDTH_DEFAULT; 
+        }
+
+        if (paddle) { // If paddle already exists, dispose and replace geometry
+            if (paddle.geometry.parameters.width !== PADDLE_WIDTH) { // Only update if width changed
+                paddle.geometry.dispose(); 
+                paddle.geometry = new THREE.PlaneGeometry(PADDLE_WIDTH, PADDLE_HEIGHT);
+                
+                // Also re-clamp position after geometry change if needed
+                const currentAreaWidth = FRUSTUM_SIZE * currentAspect;
+                const halfWidthLimit = currentAreaWidth / 2 - PADDLE_WIDTH / 2;
+                paddle.position.x = Math.min(Math.max(paddle.position.x, -halfWidthLimit), halfWidthLimit);
+            }
+        } else { // First time creation
+            const paddleGeometry = new THREE.PlaneGeometry(PADDLE_WIDTH, PADDLE_HEIGHT);
+            paddle = new THREE.Mesh(paddleGeometry, paddleMaterial);
+            paddle.position.set(0, -GAME_AREA_HEIGHT / 2 + PADDLE_HEIGHT, 0);
+            scene.add(paddle);
+        }
+    }
+    createOrUpdatePaddle(); // Initial creation
+
+    // 1.3 The Ball
+    const ballGeometry = new THREE.CircleGeometry(BALL_RADIUS, 32);
+    const ballMaterial = new THREE.MeshBasicMaterial({ color: 0xff4444 }); 
+    const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+    ball.position.set(0, -2, 0);
+    scene.add(ball);
+
+    // 1.4 The Bricks
+    function createBricks() {
+        // Clear existing bricks if any (for level reset)
+        bricks.forEach(brick => scene.remove(brick));
+        bricks.length = 0; // Clear the array
+
+        const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight); 
+
+        const totalBrickWidth = BRICK_COLUMNS * BRICK_WIDTH + (BRICK_COLUMNS - 1) * BRICK_PADDING;
+        const startX = -totalBrickWidth / 2 + BRICK_WIDTH / 2;
+        const startY = GAME_AREA_HEIGHT / 2 - BRICK_PADDING - BRICK_HEIGHT * 2; // Start bricks a bit lower
+
+        for (let r = 0; r < BRICK_ROWS; r++) {
+            for (let c = 0; c < BRICK_COLUMNS; c++) {
+                const brickGeometry = new THREE.PlaneGeometry(BRICK_WIDTH, BRICK_HEIGHT);
+                const color = new THREE.Color(`hsl(${r * 40 + c * 5}, 80%, 60%)`); // More varied colors
+                const brickMaterial = new THREE.MeshBasicMaterial({ color: color });
+                const brick = new THREE.Mesh(brickGeometry, brickMaterial);
+
+                brick.position.x = startX + c * (BRICK_WIDTH + BRICK_PADDING);
+                brick.position.y = startY - r * (BRICK_HEIGHT + BRICK_PADDING);
+
+                scene.add(brick);
+                bricks.push(brick);
+            }
+        }
+    }
+    createBricks();
+
+
+    // --- 2. INPUT HANDLERS (Keyboard and Touch) ---
+
+    // Keyboard Input
+    window.addEventListener('keydown', (e) => {
+        const key = e.key.toUpperCase();
+        if (keys.hasOwnProperty(key)) {
+            keys[key] = true;
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        const key = e.key.toUpperCase();
+        if (keys.hasOwnProperty(key)) {
+            keys[key] = false;
+        }
+    });
+
+    // Touch Input (Smartphone Compatibility)
+    const rendererElement = renderer.domElement;
+    rendererElement.addEventListener('touchstart', handleTouch, false);
+    rendererElement.addEventListener('touchmove', handleTouch, false);
+
+    function handleTouch(event) {
+        event.preventDefault(); // Prevents mobile scrolling/zooming
+
+        const touch = event.touches[0];
+        
+        const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight);
+        
+        const normalizedX = touch.clientX / window.innerWidth;
+        const targetX = (normalizedX * currentAreaWidth) - (currentAreaWidth / 2);
+
+        const halfWidthLimit = currentAreaWidth / 2 - PADDLE_WIDTH / 2;
+        paddle.position.x = Math.min(Math.max(targetX, -halfWidthLimit), halfWidthLimit);
+    }
+
+    // --- 3. MOVEMENT & GAME LOGIC FUNCTIONS ---
+
+    function updateScoreDisplay() {
+        scoreElement.innerText = `Score: ${score}`;
+    }
+
+    function recalculateVelocity() {
+        ballVelocity.x = BASE_BALL_SPEED * ballDirectionX * speedMultiplier;
+        ballVelocity.y = BASE_BALL_SPEED * ballDirectionY * speedMultiplier;
+    }
+
+    function updatePaddle() {
+        const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight); 
+
+        if (keys.A) paddle.position.x -= PADDLE_SPEED;
+        if (keys.D) paddle.position.x += PADDLE_SPEED;
+
+        const halfWidth = currentAreaWidth / 2 - PADDLE_WIDTH / 2;
+        if (paddle.position.x > halfWidth) paddle.position.x = halfWidth;
+        if (paddle.position.x < -halfWidth) paddle.position.x = -halfWidth;
+    }
+
+    function updateBall() {
+        const currentAreaWidth = FRUSTUM_SIZE * (window.innerWidth / window.innerHeight);
+
+        ball.position.x += ballVelocity.x;
+        ball.position.y += ballVelocity.y;
+
+        const rightBoundary = currentAreaWidth / 2 - BALL_RADIUS;
+        if (ball.position.x > rightBoundary || ball.position.x < -rightBoundary) {
+            ballDirectionX *= -1;
+            recalculateVelocity();
+        }
+
+        const topBoundary = GAME_AREA_HEIGHT / 2 - BALL_RADIUS;
+        if (ball.position.y > topBoundary) {
+            ballDirectionY *= -1;
+            recalculateVelocity();
+        }
+
+        if (ball.position.y < -GAME_AREA_HEIGHT / 2) {
+            console.log("Game Over! Score:", score);
+            // Reset state
+            ball.position.set(0, 0, 0);
+            ballDirectionY = -1;
+            speedMultiplier = 1.0;
+            score = 0;
+            updateScoreDisplay();
+            createBricks(); // Re-create bricks on game over
+            recalculateVelocity();
+        }
+    }
+
+    function checkCollisions() {
+        // --- PADDLE COLLISION ---
+        if (ball.position.y - BALL_RADIUS < paddle.position.y + PADDLE_HEIGHT / 2 &&
+            ball.position.y - BALL_RADIUS > paddle.position.y - PADDLE_HEIGHT / 2 &&
+            ball.position.x + BALL_RADIUS > paddle.position.x - PADDLE_WIDTH / 2 &&
+            ball.position.x - BALL_RADIUS < paddle.position.x + PADDLE_WIDTH / 2 &&
+            ballVelocity.y < 0 
+        ) {
+            ballDirectionY *= -1; 
+            
+            const hitPoint = (ball.position.x - paddle.position.x) / (PADDLE_WIDTH / 2); 
+            ballDirectionX = hitPoint * 1.5; 
+            
+            recalculateVelocity();
+        }
+
+        // --- BRICK COLLISION ---
+        for (let i = bricks.length - 1; i >= 0; i--) {
+            const brick = bricks[i];
+
+            // AABB Check
+            if (ball.position.x + BALL_RADIUS > brick.position.x - BRICK_WIDTH / 2 &&
+                ball.position.x - BALL_RADIUS < brick.position.x + BRICK_WIDTH / 2 &&
+                ball.position.y + BALL_RADIUS > brick.position.y - BRICK_HEIGHT / 2 &&
+                ball.position.y - BALL_RADIUS < brick.position.y + BRICK_HEIGHT / 2) {
+
+                // Reverse Axis
+                const xDiff = Math.abs(ball.position.x - brick.position.x);
+                const yDiff = Math.abs(ball.position.y - brick.position.y);
+                
+                if (xDiff > yDiff) {
+                    ballDirectionX *= -1; 
+                } else {
+                    ballDirectionY *= -1; 
+                }
+                
+                // Remove brick, Score, and Speed up
+                scene.remove(brick);
+                bricks.splice(i, 1);
+                
+                score += POINTS_PER_BRICK;
+                updateScoreDisplay();
+
+                speedMultiplier += 0.015; 
+                recalculateVelocity();
+                
+                // Win Condition
+                if (bricks.length === 0) {
+                    console.log("YOU WIN! Reloading level...");
+                    createBricks(); 
+                    ball.position.set(0, -2, 0); 
+                    speedMultiplier = 1.0; // Reset speed for new level
+                    recalculateVelocity();
+                }
+
+                break; 
+            }
+        }
+    }
+
+    // --- 4. ANIMATION / GAME LOOP & RESPONSIVENESS ---
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        updatePaddle();
+        updateBall();
+        checkCollisions();
+
+        renderer.render(scene, camera);
+    }
+
+    // Responsive Resize Handler 
+    window.addEventListener('resize', () => {
+        const newAspect = window.innerWidth / window.innerHeight;
+        
+        // 1. Update Camera Boundaries
+        camera.left = -FRUSTUM_SIZE * newAspect / 2;
+        camera.right = FRUSTUM_SIZE * newAspect / 2;
+        camera.updateProjectionMatrix();
+        
+        // 2. Update Renderer Size
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // 3. Update Paddle Size (and position if needed)
+        createOrUpdatePaddle(); 
+    });
+
+    animate(); // Start the game loop
+
+</script>
+
+    </body>
+</html>
